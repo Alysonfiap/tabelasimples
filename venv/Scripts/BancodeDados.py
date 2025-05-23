@@ -6,7 +6,7 @@ import os
 pasta_dados = "dados_embrapa"
 
 # Conectar ao novo banco SQLite
-conn = sqlite3.connect("vitibrasil2.db")
+conn = sqlite3.connect("vitibrasil.db")
 cursor = conn.cursor()
 
 # Função para limpar o nome da tabela
