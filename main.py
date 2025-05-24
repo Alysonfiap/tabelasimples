@@ -13,9 +13,7 @@ def get_connection():
     conn = sqlite3.connect("vitibrasil.db")
     conn.row_factory = sqlite3.Row  # permite acessar colunas por nome
     return conn
-
 router = APIRouter()
-
 @router.get("/{tabela}/{ano}")
 def listar_produtos(tabela: str,ano: int):
     conn = get_connection()

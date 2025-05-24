@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+requests
+sqlite3
+pydantic
+pandas
+os
