@@ -1,1 +1,11 @@
 .vercel
+# Ignorar ambiente virtual
+venv/
+
+# Ignorar dados brutos
+dados_embrapa/
+
+# Ignorar caches do Python
+__pycache__/
+*.py[cod]
+
