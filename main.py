@@ -1,41 +1,20 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Path
-from fastapi.middleware.cors import CORSMiddleware
-import sqlite3
 from typing import List, Dict
+import sqlite3
 
-app = FastAPI(
-    title="API Vitibrasil",
-    version="1.0.0",
-    description="Consulta dados da produção, comercialização, exportação, importação e processamento de uvas e vinhos no Brasil, extraídos da Embrapa (Vitibrasil)."
-)
+app = FastAPI()
+router = APIRouter()
 
-# Configuração CORS para liberar chamadas externas
-origins = ["*"]
+# Tabelas válidas
+TABELAS_VALIDAS = {"producao", "comercializacao", "exportacao", "importacao", "processamento"}
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
+# Função de conexão
 def get_connection():
-    conn = sqlite3.connect("vitibrasil.db")
-    conn.row_factory = sqlite3.Row
-    return conn
+    return sqlite3.connect("vitibrasil.db", check_same_thread=False)
 
-router = APIRouter(prefix="/api")
-
-# Lista segura de tabelas permitidas para consulta
-TABELAS_VALIDAS = [
-    "producao",
-    "comercializacao",
-    "exportacao",
-    "importacao",
-    "processamento"
-]
-
+# ----------------------------
+# ROTA 1 – Consulta por ANO
+# ----------------------------
 @router.get(
     "/{tabela}/{ano}",
     summary="Consulta dados por tabela e ano",
@@ -51,30 +30,25 @@ Consulta os dados de uma tabela específica para um ano informado.
 """,
     response_description="Lista de registros encontrados no banco de dados"
 )
-def listar_produtos(
-    tabela: str = Path(..., description="Nome da tabela (ex: producao, exportacao, processamento)"),
+def listar_por_ano(
+    tabela: str = Path(..., description="Nome da tabela (ex: producao, exportacao, processamento, comercializacao, importacao)"),
     ano: int = Path(..., ge=1970, le=2024, description="Ano dos dados (de 1970 a 2024)")
 ) -> Dict[str, List[Dict]]:
-    # Verifica se a tabela é válida
     tabela = tabela.lower()
     if tabela not in TABELAS_VALIDAS:
         raise HTTPException(status_code=400, detail="Tabela não suportada para consulta.")
 
     conn = get_connection()
+    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
     try:
-        # Monta a query conforme a tabela (colunas exatas)
         if tabela in ("producao", "comercializacao"):
             query = f'SELECT ano, produto, quantidade_l FROM "{tabela}" WHERE ano = ?'
         elif tabela in ("exportacao", "importacao"):
-            # Note que nomes de colunas com acento e símbolo precisam de aspas duplas no SQLite
             query = f'SELECT ano, "países", quantidade_kg, "valor_us$" FROM "{tabela}" WHERE ano = ?'
         elif tabela == "processamento":
             query = f'SELECT ano, cultivar, quantidade_kg, "sem_definição" FROM "{tabela}" WHERE ano = ?'
-        else:
-            # Isso não deve acontecer porque validamos antes, mas só por segurança
-            raise HTTPException(status_code=400, detail="Tabela inválida.")
 
         cursor.execute(query, (ano,))
         resultados = [dict(row) for row in cursor.fetchall()]
@@ -82,8 +56,43 @@ def listar_produtos(
 
     except sqlite3.Error as e:
         raise HTTPException(status_code=500, detail=f"Erro no banco de dados: {e}")
-    
     finally:
         conn.close()
 
+# ----------------------------
+# ROTA 2 – Consulta COMPLETA
+# ----------------------------
+TABELAS_VALIDAS = ("producao", "comercializacao", "exportacao", "importacao", "processamento")
+
+def get_connection():
+    return sqlite3.connect("vitibrasil.db", check_same_thread=False)
+
+# ✅ ROTA: Retorna todos os registros da tabela informada
+@router.get(
+    "/{tabela}",
+    summary="Retorna a tabela completa",
+    description="Retorna todos os registros da tabela especificada, sem filtrar por ano.",
+    response_description="Todos os dados da tabela em formato JSON"
+)
+def listar_tabela_completa(
+    tabela: str = Path(..., description="Nome da tabela (ex: producao, exportacao, importacao, processamento)")
+) -> Dict[str, List[Dict]]:
+    tabela = tabela.lower()
+    if tabela not in TABELAS_VALIDAS:
+        raise HTTPException(status_code=400, detail=f"Tabela '{tabela}' não é suportada.")
+
+    conn = get_connection()
+    conn.row_factory = sqlite3.Row  # Permite acessar por nome da coluna
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(f'SELECT * FROM "{tabela}"')
+        registros = [dict(row) for row in cursor.fetchall()]
+        return {tabela: registros}
+    except sqlite3.Error as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao acessar o banco: {e}")
+    finally:
+        conn.close()
+
+# 🔽 Inclui o router na aplicação
 app.include_router(router)
